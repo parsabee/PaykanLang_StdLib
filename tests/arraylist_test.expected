@@ -1,0 +1,43 @@
+== push / get / set / len
+empty: True len=0 []
+len=3 empty=False get(1)=20
+[10, 25, 30] joined: 10-25-30
+== insert / removeAt / pop
+[5, 10, 15, 25, 30, 40]
+removeAt(0)=5 removeAt(2)=25 -> [10, 15, 30, 40]
+pop=40 -> [10, 15, 30]
+removeAt(last)=30 -> [10, 15]
+== indexOf / lastIndexOf / contains / remove
+[10, 15, 30, 10, 30]
+indexOf 30: 2 lastIndexOf 30: 4 indexOf 7: -1
+contains 10: True contains 7: False
+remove 30: True -> [10, 15, 10, 30]
+remove 7: False -> [10, 15, 10, 30]
+== swap / reverse / slice / copy / toArray
+[30, 15, 10, 10]
+[10, 10, 15, 30]
+slice(1,3): [10, 15] slice(2,2): []
+copy: [10, 10, 15, 30, 99] original: [10, 10, 15, 30]
+toArray len=5 original len=4
+== equals / clear
+equal: True order matters: False True
+length differs: False
+vs array: False
+cleared: [] len=0 equal to empty: True
+== Str elements
+["b", "z", "a", "c"] b, z, a, c
+indexOf a: 2 remove z: True -> bac
+== class elements
+[P1, P2] indexOf P2: 1 contains P3: False
+get(0).x=1
+== tuple elements
+len=3 indexOf (2,two): 2 contains (9,x): False
+removed 3 three get(1)=(2, two)
+== optional elements
+len=3 indexOf 5: 1 lastIndexOf None: 2
+get(1)=5
+== list of lists
+inner: [1, 2] outer len=1
+== growth
+len=1001 first=-1 last=999 mid=499
+[-1, 0, 1]

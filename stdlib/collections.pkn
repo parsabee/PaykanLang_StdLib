@@ -1,0 +1,642 @@
+// ::collections — the generic containers of the PaykanLang standard library:
+// HashMap<K, V>, HashSet<V> and ArrayList<V>.
+//
+// Keys and set elements ("hashable" types). A HashMap key or HashSet element
+// is hashed over the text of its toString() and compared with equals(), both
+// reached by boxing the value as an Obj (see __box). That gives value
+// semantics for int, float, bool, char and Str, and lets a class choose: a
+// class that overrides neither toString nor equals is keyed by identity (the
+// default toString embeds the address); a class that overrides both
+// consistently (equal objects print the same) is keyed by value. Tuples and
+// optionals cannot be keys: the boxing goes through `K?`, and `(A, B)?` and
+// `T??` are not types. NaN can never be found again (NaN != NaN), as in every
+// other language; -0.0 and 0.0 are the same key.
+//
+// Values. A HashMap value type V is any type that can be boxed the same way,
+// because get() returns a `V?` and toString() prints the values. ArrayList<V>
+// never boxes its elements (it compares them with `==`), so it holds any
+// type, tuples and optionals included; listToString() and join() are free
+// functions so that only a call to them demands a printable V.
+//
+// Iteration order. keys(), values(), entries() and toString() list a map's
+// entries (and a set's elements) in insertion order; removing a key keeps the
+// order of the survivors, and re-inserting a removed key puts it last. The
+// order is therefore deterministic and the same on every backend.
+//
+// Names starting with `__` are implementation details: the language has no
+// visibility keywords yet (#19), so this is a convention only.
+
+// ---------------------------------------------------------------------------
+// Helpers
+
+// Box a value as an Obj. `T?` is the one implicit primitive -> Obj conversion
+// the language offers today, so this is how one generic body reaches
+// toString()/equals() on an int, a Str or a class instance alike.
+fn __box<T>(v: T) -> Obj {
+  o: T? = v;
+  r: Obj = o;
+  return r;
+}
+
+// Hash a hashable value: djb2 over the text of its toString(). Integer
+// arithmetic wraps on overflow, which is what a hash wants.
+fn __hashOf<T>(v: T) -> int {
+  s: Str = __box<T>(v).toString();
+  // -0.0 == 0.0 but prints as "-0": fold it so equal floats hash alike.
+  if (s == "-0") { s = "0"; }
+  h: int = 5381;
+  i: int = 0;
+  while (i < s.len()) {
+    h = h * 33 + int<char>(s[i]);
+    i = i + 1;
+  }
+  return h;
+}
+
+// Render a hashable value for toString(): Str elements are quoted so that
+// {a: 1} and {"a": 1} stay distinguishable from one another.
+fn __show<T>(v: T) -> Str {
+  o: Obj = __box<T>(v);
+  match o {
+    s: Str { return "\"" + s + "\""; }
+    _      { return o.toString(); }
+  }
+}
+
+// One key/value pair of a HashMap.
+class __Entry<K, V> {
+  key: K;
+  value: V;
+  hash: int;
+  fn __init__(key: K, value: V, hash: int) {
+    self.key = key;
+    self.value = value;
+    self.hash = hash;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// HashMap<K, V>
+
+// A hash table from K to V with insertion-ordered iteration.
+//
+// Entries live in `__slots` in insertion order (a removed entry leaves a None
+// "tombstone" behind so the indices of the others stay valid); `__buckets`
+// maps a hash to the slot indices of the entries with that hash. The buckets
+// double when the load factor passes 3/4, and the tombstones are compacted
+// away when they outnumber the live entries, so put/get/remove stay O(1) on
+// average and iteration is O(n).
+class HashMap<K, V> {
+  __slots: __Entry<K, V>?[];
+  __buckets: int[][];
+  __size: int;
+  __dead: int;
+
+  // An empty map.
+  fn __init__() {
+    self.__slots = [];
+    self.__buckets = [];
+    self.__size = 0;
+    self.__dead = 0;
+    self.__addBuckets(8);
+  }
+
+  fn __addBuckets(n: int) {
+    i: int = 0;
+    while (i < n) {
+      chain: int[] = [];
+      self.__buckets.push(chain);
+      i = i + 1;
+    }
+  }
+
+  // The bucket of a hash; `%` keeps the dividend's sign, so fix negatives up.
+  fn __bucketOf(hash: int) -> int {
+    b: int = hash % self.__buckets.len();
+    return if b < 0 then b + self.__buckets.len() else b;
+  }
+
+  // The slot index of `key` (whose hash is `hash`), or -1 when absent.
+  fn __find(key: K, hash: int) -> int {
+    chain: int[] = self.__buckets[self.__bucketOf(hash)];
+    boxed: Obj = __box<K>(key);
+    i: int = 0;
+    while (i < chain.len()) {
+      match self.__slots[chain[i]] {
+        e: __Entry<K, V> {
+          if (e.hash == hash && boxed.equals(__box<K>(e.key))) { return chain[i]; }
+        }
+        None { }
+      }
+      i = i + 1;
+    }
+    return -1;
+  }
+
+  // Re-index every live entry into `nbuckets` fresh buckets, dropping the
+  // tombstones. Used both to grow and to compact.
+  fn __rebuild(nbuckets: int) {
+    old: __Entry<K, V>?[] = self.__slots;
+    self.__slots = [];
+    self.__buckets = [];
+    self.__addBuckets(nbuckets);
+    self.__dead = 0;
+    i: int = 0;
+    while (i < old.len()) {
+      match old[i] {
+        e: __Entry<K, V> {
+          self.__slots.push(e);
+          self.__buckets[self.__bucketOf(e.hash)].push(self.__slots.len() - 1);
+        }
+        None { }
+      }
+      i = i + 1;
+    }
+  }
+
+  // The number of entries.
+  fn len() -> int { return self.__size; }
+
+  // True when the map holds no entry.
+  fn isEmpty() -> bool { return self.__size == 0; }
+
+  // Store `value` under `key`, replacing an existing value; True if `key` is new.
+  fn put(key: K, value: V) -> bool {
+    hash: int = __hashOf<K>(key);
+    idx: int = self.__find(key, hash);
+    if (idx >= 0) {
+      match self.__slots[idx] {
+        e: __Entry<K, V> { e.value = value; }
+        None { }
+      }
+      return False;
+    }
+    self.__slots.push(__Entry<K, V>(key, value, hash));
+    self.__buckets[self.__bucketOf(hash)].push(self.__slots.len() - 1);
+    self.__size = self.__size + 1;
+    if (self.__size * 4 > self.__buckets.len() * 3) {
+      self.__rebuild(self.__buckets.len() * 2);
+    }
+    return True;
+  }
+
+  // The value under `key`, or None when the key is absent.
+  fn get(key: K) -> V? {
+    idx: int = self.__find(key, __hashOf<K>(key));
+    if (idx < 0) { return None; }
+    match self.__slots[idx] {
+      e: __Entry<K, V> { return e.value; }
+      None { return None; }
+    }
+  }
+
+  // The value under `key`, or `fallback` when the key is absent.
+  fn getOr(key: K, fallback: V) -> V {
+    match self.get(key) {
+      v: V  { return v; }
+      None  { return fallback; }
+    }
+  }
+
+  // True when `key` is present.
+  fn contains(key: K) -> bool {
+    return self.__find(key, __hashOf<K>(key)) >= 0;
+  }
+
+  // Remove `key` and its value; True if it was present.
+  fn remove(key: K) -> bool {
+    hash: int = __hashOf<K>(key);
+    idx: int = self.__find(key, hash);
+    if (idx < 0) { return False; }
+    self.__slots[idx] = None;
+    // Drop the index from its chain: rebuild the chain without it.
+    chain: int[] = self.__buckets[self.__bucketOf(hash)];
+    rest: int[] = [];
+    i: int = 0;
+    while (i < chain.len()) {
+      if (chain[i] != idx) { rest.push(chain[i]); }
+      i = i + 1;
+    }
+    self.__buckets[self.__bucketOf(hash)] = rest;
+    self.__size = self.__size - 1;
+    self.__dead = self.__dead + 1;
+    // Compact once the tombstones outnumber the entries, so that iteration
+    // and a long put/remove churn stay proportional to the live size.
+    if (self.__dead > self.__size && self.__dead >= 8) {
+      self.__rebuild(self.__buckets.len());
+    }
+    return True;
+  }
+
+  // Remove every entry.
+  fn clear() {
+    self.__slots = [];
+    self.__buckets = [];
+    self.__size = 0;
+    self.__dead = 0;
+    self.__addBuckets(8);
+  }
+
+  // The keys, in insertion order.
+  fn keys() -> K[] {
+    out: K[] = [];
+    i: int = 0;
+    while (i < self.__slots.len()) {
+      match self.__slots[i] {
+        e: __Entry<K, V> { out.push(e.key); }
+        None { }
+      }
+      i = i + 1;
+    }
+    return out;
+  }
+
+  // The values, in insertion order of their keys.
+  fn values() -> V[] {
+    out: V[] = [];
+    i: int = 0;
+    while (i < self.__slots.len()) {
+      match self.__slots[i] {
+        e: __Entry<K, V> { out.push(e.value); }
+        None { }
+      }
+      i = i + 1;
+    }
+    return out;
+  }
+
+  // The (key, value) pairs, in insertion order.
+  fn entries() -> (K, V)[] {
+    out: (K, V)[] = [];
+    i: int = 0;
+    while (i < self.__slots.len()) {
+      match self.__slots[i] {
+        e: __Entry<K, V> { out.push((e.key, e.value)); }
+        None { }
+      }
+      i = i + 1;
+    }
+    return out;
+  }
+
+  // Store every entry of `other` into this map (its values win on a shared key).
+  fn putAll(other: HashMap<K, V>) {
+    es: (K, V)[] = other.entries();
+    i: int = 0;
+    while (i < es.len()) {
+      self.put(es[i].0, es[i].1);
+      i = i + 1;
+    }
+  }
+
+  // A new map with the same entries (the keys and values themselves are shared).
+  fn copy() -> HashMap<K, V> {
+    m: HashMap<K, V> = HashMap<K, V>();
+    m.putAll(self);
+    return m;
+  }
+
+  // `{key: value, ...}` in insertion order; Str keys and values are quoted.
+  fn toString() -> Str {
+    s: Str = "{";
+    es: (K, V)[] = self.entries();
+    i: int = 0;
+    while (i < es.len()) {
+      if (i > 0) { s = s + ", "; }
+      s = s + __show<K>(es[i].0) + ": " + __show<V>(es[i].1);
+      i = i + 1;
+    }
+    return s + "}";
+  }
+
+  // True when `other` is a HashMap<K, V> with the same keys mapped to equal
+  // values (values compared with `==`), whatever the insertion orders.
+  fn equals(other: Obj) -> bool {
+    match other {
+      o: HashMap<K, V> {
+        if (o.len() != self.len()) { return False; }
+        es: (K, V)[] = self.entries();
+        i: int = 0;
+        while (i < es.len()) {
+          match o.get(es[i].0) {
+            v: V { if (v != es[i].1) { return False; } }
+            None { return False; }
+          }
+          i = i + 1;
+        }
+        return True;
+      }
+      _ { return False; }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// HashSet<V>
+
+// A set of hashable values with insertion-ordered iteration, backed by a
+// HashMap<V, bool>.
+class HashSet<V> {
+  __map: HashMap<V, bool>;
+
+  // An empty set.
+  fn __init__() { self.__map = HashMap<V, bool>(); }
+
+  // The number of elements.
+  fn len() -> int { return self.__map.len(); }
+
+  // True when the set is empty.
+  fn isEmpty() -> bool { return self.__map.isEmpty(); }
+
+  // Add `v`; True if it was not already present.
+  fn add(v: V) -> bool { return self.__map.put(v, True); }
+
+  // Add every element of `vs`.
+  fn addAll(vs: V[]) {
+    i: int = 0;
+    while (i < vs.len()) {
+      self.__map.put(vs[i], True);
+      i = i + 1;
+    }
+  }
+
+  // True when `v` is present.
+  fn contains(v: V) -> bool { return self.__map.contains(v); }
+
+  // Remove `v`; True if it was present.
+  fn remove(v: V) -> bool { return self.__map.remove(v); }
+
+  // Remove every element.
+  fn clear() { self.__map.clear(); }
+
+  // The elements, in insertion order.
+  fn values() -> V[] { return self.__map.keys(); }
+
+  // A new set holding the elements of both sets.
+  fn union(other: HashSet<V>) -> HashSet<V> {
+    out: HashSet<V> = self.copy();
+    out.addAll(other.values());
+    return out;
+  }
+
+  // A new set holding the elements present in both sets.
+  fn intersection(other: HashSet<V>) -> HashSet<V> {
+    out: HashSet<V> = HashSet<V>();
+    vs: V[] = self.values();
+    i: int = 0;
+    while (i < vs.len()) {
+      if (other.contains(vs[i])) { out.add(vs[i]); }
+      i = i + 1;
+    }
+    return out;
+  }
+
+  // A new set holding the elements of this set that are not in `other`.
+  fn difference(other: HashSet<V>) -> HashSet<V> {
+    out: HashSet<V> = HashSet<V>();
+    vs: V[] = self.values();
+    i: int = 0;
+    while (i < vs.len()) {
+      if (!other.contains(vs[i])) { out.add(vs[i]); }
+      i = i + 1;
+    }
+    return out;
+  }
+
+  // True when every element of this set is in `other`.
+  fn isSubsetOf(other: HashSet<V>) -> bool {
+    vs: V[] = self.values();
+    i: int = 0;
+    while (i < vs.len()) {
+      if (!other.contains(vs[i])) { return False; }
+      i = i + 1;
+    }
+    return True;
+  }
+
+  // A new set with the same elements.
+  fn copy() -> HashSet<V> {
+    out: HashSet<V> = HashSet<V>();
+    out.addAll(self.values());
+    return out;
+  }
+
+  // `{a, b, ...}` in insertion order; Str elements are quoted.
+  fn toString() -> Str {
+    s: Str = "{";
+    vs: V[] = self.values();
+    i: int = 0;
+    while (i < vs.len()) {
+      if (i > 0) { s = s + ", "; }
+      s = s + __show<V>(vs[i]);
+      i = i + 1;
+    }
+    return s + "}";
+  }
+
+  // True when `other` is a HashSet<V> with exactly the same elements.
+  fn equals(other: Obj) -> bool {
+    match other {
+      o: HashSet<V> { return o.len() == self.len() && self.isSubsetOf(o); }
+      _             { return False; }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ArrayList<V>
+
+// A growable list of V, in the spirit of the builtin arrays: a contiguous
+// backing array that grows at the end, with insert/remove anywhere by
+// shifting. Elements are compared with `==` (value for primitives, content
+// for Str, `equals` for classes, element-wise for tuples), so V can be any
+// type. Indices are bounds-checked: an index outside the list aborts the
+// program with the array's own `index out of bounds` panic.
+class ArrayList<V> {
+  __items: V[];
+
+  // An empty list.
+  fn __init__() { self.__items = []; }
+
+  // The number of elements.
+  fn len() -> int { return self.__items.len(); }
+
+  // True when the list is empty.
+  fn isEmpty() -> bool { return self.__items.len() == 0; }
+
+  // The element at `i`.
+  fn get(i: int) -> V { return self.__items[i]; }
+
+  // Replace the element at `i`.
+  fn set(i: int, v: V) { self.__items[i] = v; }
+
+  // Append `v`.
+  fn push(v: V) { self.__items.push(v); }
+
+  // Append every element of `vs`.
+  fn pushAll(vs: V[]) {
+    i: int = 0;
+    while (i < vs.len()) {
+      self.__items.push(vs[i]);
+      i = i + 1;
+    }
+  }
+
+  // Remove and return the last element (panics on an empty list).
+  fn pop() -> V { return self.__items.pop(); }
+
+  // Insert `v` at `i` (0 <= i <= len), shifting what follows to the right.
+  fn insert(i: int, v: V) {
+    n: int = self.__items.len();
+    if (i == n) {
+      self.__items.push(v);
+      return;
+    }
+    // Reading `[i]` first makes an index past the end panic like any other
+    // out-of-bounds access, instead of silently appending.
+    last: V = self.__items[i];
+    last = self.__items[n - 1];
+    self.__items.push(last);
+    j: int = n - 1;
+    while (j > i) {
+      self.__items[j] = self.__items[j - 1];
+      j = j - 1;
+    }
+    self.__items[i] = v;
+  }
+
+  // Remove and return the element at `i`, shifting what follows to the left.
+  fn removeAt(i: int) -> V {
+    v: V = self.__items[i];
+    j: int = i;
+    while (j < self.__items.len() - 1) {
+      self.__items[j] = self.__items[j + 1];
+      j = j + 1;
+    }
+    self.__items.pop();
+    return v;
+  }
+
+  // Remove the first element equal to `v`; True if one was found.
+  fn remove(v: V) -> bool {
+    i: int = self.indexOf(v);
+    if (i < 0) { return False; }
+    self.removeAt(i);
+    return True;
+  }
+
+  // The index of the first element equal to `v`, or -1.
+  fn indexOf(v: V) -> int {
+    i: int = 0;
+    while (i < self.__items.len()) {
+      if (self.__items[i] == v) { return i; }
+      i = i + 1;
+    }
+    return -1;
+  }
+
+  // The index of the last element equal to `v`, or -1.
+  fn lastIndexOf(v: V) -> int {
+    i: int = self.__items.len() - 1;
+    while (i >= 0) {
+      if (self.__items[i] == v) { return i; }
+      i = i - 1;
+    }
+    return -1;
+  }
+
+  // True when some element equals `v`.
+  fn contains(v: V) -> bool { return self.indexOf(v) >= 0; }
+
+  // Remove every element.
+  fn clear() { self.__items = []; }
+
+  // Swap the elements at `i` and `j`.
+  fn swap(i: int, j: int) {
+    t: V = self.__items[i];
+    self.__items[i] = self.__items[j];
+    self.__items[j] = t;
+  }
+
+  // Reverse the list in place.
+  fn reverse() {
+    lo: int = 0;
+    hi: int = self.__items.len() - 1;
+    while (lo < hi) {
+      self.swap(lo, hi);
+      lo = lo + 1;
+      hi = hi - 1;
+    }
+  }
+
+  // A new list holding the elements from `from` (inclusive) to `to` (exclusive).
+  fn slice(from: int, to: int) -> ArrayList<V> {
+    out: ArrayList<V> = ArrayList<V>();
+    i: int = from;
+    while (i < to) {
+      out.push(self.__items[i]);
+      i = i + 1;
+    }
+    return out;
+  }
+
+  // A new list with the same elements.
+  fn copy() -> ArrayList<V> { return self.slice(0, self.__items.len()); }
+
+  // The elements as a fresh builtin array.
+  fn toArray() -> V[] {
+    out: V[] = [];
+    self.__copyInto(out);
+    return out;
+  }
+
+  fn __copyInto(out: V[]) {
+    i: int = 0;
+    while (i < self.__items.len()) {
+      out.push(self.__items[i]);
+      i = i + 1;
+    }
+  }
+
+  // True when `other` is an ArrayList<V> of equal elements in the same order.
+  fn equals(other: Obj) -> bool {
+    match other {
+      o: ArrayList<V> {
+        if (o.len() != self.__items.len()) { return False; }
+        i: int = 0;
+        while (i < self.__items.len()) {
+          if (o.get(i) != self.__items[i]) { return False; }
+          i = i + 1;
+        }
+        return True;
+      }
+      _ { return False; }
+    }
+  }
+}
+
+// The elements of `xs` joined by `sep`, each rendered with its toString()
+// (Str elements unquoted). V must be a boxable type (see the module comment).
+fn join<V>(xs: ArrayList<V>, sep: Str) -> Str {
+  s: Str = "";
+  i: int = 0;
+  while (i < xs.len()) {
+    if (i > 0) { s = s + sep; }
+    s = s + __box<V>(xs.get(i)).toString();
+    i = i + 1;
+  }
+  return s;
+}
+
+// `[a, b, ...]` with Str elements quoted, like HashMap's and HashSet's
+// toString(). V must be a boxable type (see the module comment).
+fn listToString<V>(xs: ArrayList<V>) -> Str {
+  s: Str = "[";
+  i: int = 0;
+  while (i < xs.len()) {
+    if (i > 0) { s = s + ", "; }
+    s = s + __show<V>(xs.get(i));
+    i = i + 1;
+  }
+  return s + "]";
+}

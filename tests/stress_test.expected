@@ -1,0 +1,18 @@
+== 10000 int keys
+len=10000
+missing=0 wrong=0
+== remove every other key, then the rest
+len=5000 wrong=0 keys=5000
+first=3 second=9 last=29997 checksum=-159701792329313495
+len=0 wrong=0 empty=True {}
+== churn: put/remove the same keys many times
+len=25 keys=25 checksum=-5206158961364985548
+== insertion order survives growth and compaction
+len=1001 descending=True last=2998 checksum=3434232377151557537
+== 5000 Str keys
+len=5000 bad=0 contains key-4999: True contains key-5000: False
+== sets of 5000
+len=5000 union=7500 intersection=2500 difference=2500
+checksum=-8191125577720164139
+== array list of 20000 with front inserts and removes
+len=20000 first=-99 get(50)=50 last=19999 checksum=-3006366881823713855

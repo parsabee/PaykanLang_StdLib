@@ -1,0 +1,114 @@
+// HashSet<V>: every method, on int, Str and class elements.
+import ::collections;
+
+class Point {
+  x: int;
+  y: int;
+  fn __init__(x: int, y: int) { self.x = x; self.y = y; }
+  fn toString() -> Str { return "(" + Str(self.x) + "," + Str(self.y) + ")"; }
+  fn equals(o: Obj) -> bool {
+    match o {
+      p: Point { return p.x == self.x && p.y == self.y; }
+      _        { return False; }
+    }
+  }
+}
+
+fn section(name: Str) { println("== " + name); }
+
+fn main() -> int {
+  section("add / contains / remove");
+  s = collections::HashSet<int>();
+  println("empty: " + Str(s.isEmpty()) + " len=" + Str(s.len()));
+  println("add 1: " + Str(s.add(1)));
+  println("add 2: " + Str(s.add(2)));
+  println("add 1 again: " + Str(s.add(1)));
+  println("len=" + Str(s.len()) + " empty=" + Str(s.isEmpty()));
+  println("contains 1: " + Str(s.contains(1)) + " contains 3: " + Str(s.contains(3)));
+  println("remove 1: " + Str(s.remove(1)));
+  println("remove 1 again: " + Str(s.remove(1)));
+  println(s.toString());
+  println(s);
+
+  section("addAll / values keep insertion order");
+  s.addAll([5, 3, 5, 9, 2]);
+  vs: int[] = s.values();
+  i: int = 0;
+  while (i < vs.len()) {
+    print(Str(vs[i]) + " ");
+    i = i + 1;
+  }
+  println("| len=" + Str(s.len()));
+
+  section("union / intersection / difference / isSubsetOf");
+  a = collections::HashSet<int>();
+  a.addAll([1, 2, 3, 4]);
+  b = collections::HashSet<int>();
+  b.addAll([3, 4, 5]);
+  println("union: " + a.union(b).toString());
+  println("intersection: " + a.intersection(b).toString());
+  println("a - b: " + a.difference(b).toString());
+  println("b - a: " + b.difference(a).toString());
+  println("a subset of a|b: " + Str(a.isSubsetOf(a.union(b))) + " a subset of b: " + Str(a.isSubsetOf(b)));
+  println("empty subset of a: " + Str(collections::HashSet<int>().isSubsetOf(a)));
+  println("inputs untouched: " + a.toString() + " " + b.toString());
+
+  section("copy / equals / clear");
+  c = a.copy();
+  println("copy equal: " + Str(c == a));
+  c.add(99);
+  println("after add: " + Str(c == a) + " " + Str(c != a));
+  d = collections::HashSet<int>();
+  d.addAll([4, 3, 2, 1]);
+  println("reordered equal: " + Str(d == a) + " strings differ: " + Str(d.toString() != a.toString()));
+  println("vs b: " + Str(a == b));
+  o: Obj = [1, 2, 3, 4];
+  println("vs array: " + Str(a.equals(o)));
+  c.clear();
+  println("cleared: " + c.toString() + " len=" + Str(c.len()) + " contains 1: " + Str(c.contains(1)));
+
+  section("Str elements");
+  words = collections::HashSet<Str>();
+  text: Str[] = ["the", "cat", "and", "the", "dog", "and", "the", "bird"];
+  i = 0;
+  while (i < text.len()) {
+    words.add(text[i]);
+    i = i + 1;
+  }
+  println(words.toString() + " len=" + Str(words.len()));
+  println("contains cat: " + Str(words.contains("cat")) + " contains cow: " + Str(words.contains("cow")));
+
+  section("class elements by value");
+  ps = collections::HashSet<Point>();
+  ps.add(Point(1, 1));
+  ps.add(Point(1, 1));
+  ps.add(Point(2, 2));
+  println(ps.toString() + " len=" + Str(ps.len()));
+  println("contains (2,2): " + Str(ps.contains(Point(2, 2))) + " remove (1,1): " + Str(ps.remove(Point(1, 1))));
+  println(ps.toString());
+
+  section("float and char elements");
+  fs = collections::HashSet<float>();
+  fs.addAll([0.0, -0.0, 1.5, 1.5]);
+  println(fs.toString());
+  cs = collections::HashSet<char>();
+  cs.addAll(['x', 'y', 'x']);
+  println(cs.toString());
+
+  section("growth keeps everything");
+  g = collections::HashSet<int>();
+  n: int = 0;
+  while (n < 100) {
+    g.add(n * 7);
+    n = n + 1;
+  }
+  ok: bool = True;
+  n = 0;
+  while (n < 100) {
+    if (!g.contains(n * 7)) { ok = False; }
+    if (g.contains(n * 7 + 1)) { ok = False; }
+    n = n + 1;
+  }
+  println("len=" + Str(g.len()) + " all found=" + Str(ok));
+  return 0;
+}

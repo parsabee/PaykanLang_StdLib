@@ -1,0 +1,207 @@
+// HashMap<K, V>: every method, on int, Str, float, char, bool and class keys.
+import ::collections;
+
+// A class keyed by value: toString and equals agree.
+class Point {
+  x: int;
+  y: int;
+  fn __init__(x: int, y: int) { self.x = x; self.y = y; }
+  fn toString() -> Str { return "(" + Str(self.x) + "," + Str(self.y) + ")"; }
+  fn equals(o: Obj) -> bool {
+    match o {
+      p: Point { return p.x == self.x && p.y == self.y; }
+      _        { return False; }
+    }
+  }
+}
+
+// A class keyed by identity: neither toString nor equals is overridden.
+class Token {
+  n: int;
+  fn __init__(n: int) { self.n = n; }
+}
+
+fn showInt(o: int?) -> Str {
+  match o {
+    v: int { return Str(v); }
+    None   { return "None"; }
+  }
+}
+
+fn showStr(o: Str?) -> Str {
+  match o {
+    v: Str { return v; }
+    None   { return "None"; }
+  }
+}
+
+fn section(name: Str) { println("== " + name); }
+
+fn main() -> int {
+  section("Str -> int");
+  m = collections::HashMap<Str, int>();
+  println("empty: " + Str(m.isEmpty()) + " len=" + Str(m.len()));
+  println("put a: " + Str(m.put("a", 1)));
+  println("put b: " + Str(m.put("b", 2)));
+  println("put a again: " + Str(m.put("a", 10)));
+  println("len=" + Str(m.len()) + " empty=" + Str(m.isEmpty()));
+  println("get a: " + showInt(m.get("a")));
+  println("get b: " + showInt(m.get("b")));
+  println("get zz: " + showInt(m.get("zz")));
+  println("getOr b: " + Str(m.getOr("b", -1)) + " getOr zz: " + Str(m.getOr("zz", -1)));
+  println("contains a: " + Str(m.contains("a")) + " contains zz: " + Str(m.contains("zz")));
+  println(m.toString());
+  println(m);
+
+  section("remove");
+  println("remove a: " + Str(m.remove("a")));
+  println("remove a again: " + Str(m.remove("a")));
+  println("len=" + Str(m.len()) + " " + m.toString());
+  println("re-put a: " + Str(m.put("a", 3)) + " " + m.toString());
+
+  section("keys / values / entries keep insertion order");
+  m.put("c", 4);
+  m.put("d", 5);
+  m.remove("b");
+  ks: Str[] = m.keys();
+  vs: int[] = m.values();
+  es: (Str, int)[] = m.entries();
+  i: int = 0;
+  while (i < ks.len()) {
+    k, v = es[i];
+    println(ks[i] + " " + Str(vs[i]) + " " + k + "=" + Str(v));
+    i = i + 1;
+  }
+
+  section("putAll / copy / equals");
+  other = collections::HashMap<Str, int>();
+  other.put("d", 50);
+  other.put("e", 6);
+  m.putAll(other);
+  println(m.toString());
+  cp = m.copy();
+  println("copy equal: " + Str(cp == m) + " " + Str(cp.equals(m)));
+  cp.put("e", 7);
+  println("after change: " + Str(cp == m) + " " + Str(cp != m));
+  cp.put("e", 6);
+  println("restored: " + Str(cp == m));
+  // Same entries inserted in another order are still equal.
+  rev = collections::HashMap<Str, int>();
+  rev.put("e", 6);
+  rev.put("d", 50);
+  rev.put("c", 4);
+  rev.put("a", 3);
+  println("reordered equal: " + Str(rev == m) + " strings differ: " + Str(rev.toString() != m.toString()));
+  println("vs other: " + Str(m == other));
+  o: Obj = "not a map";
+  println("vs Str: " + Str(m.equals(o)));
+
+  section("clear");
+  m.clear();
+  println("len=" + Str(m.len()) + " " + m.toString() + " get a: " + showInt(m.get("a")));
+  m.put("x", 1);
+  println(m.toString());
+
+  section("int -> Str");
+  im = collections::HashMap<int, Str>();
+  im.put(1, "one");
+  im.put(-1, "minus one");
+  im.put(0, "zero");
+  im.put(9223372036854775807, "max");
+  im.put(-9223372036854775807 - 1, "min");
+  println(im.toString());
+  println("get -1: " + showStr(im.get(-1)) + " get 2: " + showStr(im.get(2)));
+  println("get min: " + showStr(im.get(-9223372036854775807 - 1)));
+
+  section("float keys");
+  fm = collections::HashMap<float, int>();
+  fm.put(0.5, 1);
+  fm.put(0.0, 2);
+  fm.put(-0.0, 3);
+  fm.put(1.0e20, 4);
+  println(fm.toString() + " len=" + Str(fm.len()));
+  println("get -0.0: " + showInt(fm.get(-0.0)) + " get 0.5: " + showInt(fm.get(0.5)));
+  nan: float = 0.0 / 0.0;
+  fm.put(nan, 9);
+  println("nan stored, found: " + Str(fm.contains(nan)) + " len=" + Str(fm.len()));
+
+  section("char and bool keys");
+  cm = collections::HashMap<char, int>();
+  cm.put('a', 1);
+  cm.put('\n', 2);
+  cm.put('a', 3);
+  println("len=" + Str(cm.len()) + " a=" + showInt(cm.get('a')) + " b=" + showInt(cm.get('b')));
+  bm = collections::HashMap<bool, Str>();
+  bm.put(True, "yes");
+  bm.put(False, "no");
+  bm.put(True, "YES");
+  println(bm.toString());
+
+  section("class keys by value");
+  pm = collections::HashMap<Point, Str>();
+  pm.put(Point(1, 2), "a");
+  pm.put(Point(1, 2), "b");
+  pm.put(Point(2, 1), "c");
+  println(pm.toString() + " len=" + Str(pm.len()));
+  println("get (1,2): " + showStr(pm.get(Point(1, 2))) + " get (3,3): " + showStr(pm.get(Point(3, 3))));
+  println("remove (2,1): " + Str(pm.remove(Point(2, 1))) + " len=" + Str(pm.len()));
+
+  section("class keys by identity");
+  t1 = Token(1);
+  t2 = Token(1);
+  tm = collections::HashMap<Token, int>();
+  tm.put(t1, 1);
+  tm.put(t2, 2);
+  tm.put(t1, 3);
+  println("len=" + Str(tm.len()) + " t1=" + showInt(tm.get(t1)) + " t2=" + showInt(tm.get(t2)) + " fresh=" + showInt(tm.get(Token(1))));
+
+  section("object values");
+  om = collections::HashMap<Str, Point>();
+  om.put("p", Point(3, 4));
+  match om.get("p") {
+    p: Point { println("p.x=" + Str(p.x) + " " + p.toString()); }
+    None     { println("missing"); }
+  }
+  println(om.toString());
+  om2 = collections::HashMap<Str, Point>();
+  om2.put("p", Point(3, 4));
+  println("value-equal maps: " + Str(om == om2));
+
+  section("array values are shared");
+  am = collections::HashMap<Str, int[]>();
+  arr: int[] = [1, 2];
+  am.put("xs", arr);
+  match am.get("xs") {
+    xs: int[] { xs.push(3); }
+    None      { }
+  }
+  println("arr.len=" + Str(arr.len()));
+
+  section("nested maps");
+  nm = collections::HashMap<Str, collections::HashMap<Str, int>>();
+  inner = collections::HashMap<Str, int>();
+  inner.put("k", 1);
+  nm.put("outer", inner);
+  match nm.get("outer") {
+    im2: collections::HashMap<Str, int> { im2.put("j", 2); println(im2.toString()); }
+    None { }
+  }
+  println(nm.toString());
+
+  section("growth keeps everything");
+  g = collections::HashMap<int, int>();
+  n: int = 0;
+  while (n < 100) {
+    g.put(n, n * n);
+    n = n + 1;
+  }
+  ok: bool = True;
+  n = 0;
+  while (n < 100) {
+    if (g.getOr(n, -1) != n * n) { ok = False; }
+    n = n + 1;
+  }
+  gk: int[] = g.keys();
+  println("len=" + Str(g.len()) + " all found=" + Str(ok) + " first=" + Str(gk[0]) + " last=" + Str(gk[99]));
+  return 0;
+}

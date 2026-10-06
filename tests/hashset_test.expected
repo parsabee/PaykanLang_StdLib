@@ -1,0 +1,40 @@
+== add / contains / remove
+empty: True len=0
+add 1: True
+add 2: True
+add 1 again: False
+len=2 empty=False
+contains 1: True contains 3: False
+remove 1: True
+remove 1 again: False
+{2}
+{2}
+== addAll / values keep insertion order
+2 5 3 9 | len=4
+== union / intersection / difference / isSubsetOf
+union: {1, 2, 3, 4, 5}
+intersection: {3, 4}
+a - b: {1, 2}
+b - a: {5}
+a subset of a|b: True a subset of b: False
+empty subset of a: True
+inputs untouched: {1, 2, 3, 4} {3, 4, 5}
+== copy / equals / clear
+copy equal: True
+after add: False True
+reordered equal: True strings differ: True
+vs b: False
+vs array: False
+cleared: {} len=0 contains 1: False
+== Str elements
+{"the", "cat", "and", "dog", "bird"} len=5
+contains cat: True contains cow: False
+== class elements by value
+{(1,1), (2,2)} len=2
+contains (2,2): True remove (1,1): True
+{(2,2)}
+== float and char elements
+{0, 1.5}
+{x, y}
+== growth keeps everything
+len=100 all found=True

@@ -1,0 +1,138 @@
+// Stress: thousands of insertions, rehash growth, removal patterns and the
+// determinism of the iteration order under churn.
+import ::collections;
+
+fn section(name: Str) { println("== " + name); }
+
+// A cheap order-sensitive checksum of an int sequence.
+fn checksum(xs: int[]) -> int {
+  h: int = 17;
+  i: int = 0;
+  while (i < xs.len()) {
+    h = h * 31 + xs[i];
+    i = i + 1;
+  }
+  return h;
+}
+
+fn main() -> int {
+  section("10000 int keys");
+  m = collections::HashMap<int, int>();
+  i: int = 0;
+  while (i < 10000) {
+    m.put(i * 3, i);
+    i = i + 1;
+  }
+  println("len=" + Str(m.len()));
+  missing: int = 0;
+  wrong: int = 0;
+  i = 0;
+  while (i < 10000) {
+    match m.get(i * 3) {
+      v: int { if (v != i) { wrong = wrong + 1; } }
+      None   { missing = missing + 1; }
+    }
+    if (m.contains(i * 3 + 1)) { wrong = wrong + 1; }
+    i = i + 1;
+  }
+  println("missing=" + Str(missing) + " wrong=" + Str(wrong));
+
+  section("remove every other key, then the rest");
+  i = 0;
+  while (i < 10000) {
+    if (!m.remove(i * 3)) { wrong = wrong + 1; }
+    i = i + 2;
+  }
+  println("len=" + Str(m.len()) + " wrong=" + Str(wrong) + " keys=" + Str(m.keys().len()));
+  ks: int[] = m.keys();
+  println("first=" + Str(ks[0]) + " second=" + Str(ks[1]) + " last=" + Str(ks[ks.len() - 1]) + " checksum=" + Str(checksum(ks)));
+  i = 1;
+  while (i < 10000) {
+    if (!m.remove(i * 3)) { wrong = wrong + 1; }
+    i = i + 2;
+  }
+  println("len=" + Str(m.len()) + " wrong=" + Str(wrong) + " empty=" + Str(m.isEmpty()) + " " + m.toString());
+
+  section("churn: put/remove the same keys many times");
+  i = 0;
+  while (i < 20000) {
+    m.put(i % 50, i);
+    m.remove((i + 25) % 50);
+    i = i + 1;
+  }
+  println("len=" + Str(m.len()) + " keys=" + Str(m.keys().len()) + " checksum=" + Str(checksum(m.keys())));
+
+  section("insertion order survives growth and compaction");
+  o = collections::HashMap<int, int>();
+  i = 0;
+  while (i < 3000) {
+    o.put(2999 - i, i);
+    i = i + 1;
+  }
+  i = 0;
+  while (i < 3000) {
+    if (i % 3 != 0) { o.remove(2999 - i); }
+    i = i + 1;
+  }
+  o.put(2999 - 1, -1);
+  oks: int[] = o.keys();
+  inOrder: bool = True;
+  i = 1;
+  while (i < oks.len() - 1) {
+    if (oks[i] >= oks[i - 1]) { inOrder = False; }
+    i = i + 1;
+  }
+  println("len=" + Str(o.len()) + " descending=" + Str(inOrder) + " last=" + Str(oks[oks.len() - 1]) + " checksum=" + Str(checksum(oks)));
+
+  section("5000 Str keys");
+  sm = collections::HashMap<Str, int>();
+  i = 0;
+  while (i < 5000) {
+    sm.put("key-" + Str(i), i);
+    i = i + 1;
+  }
+  bad: int = 0;
+  i = 0;
+  while (i < 5000) {
+    if (sm.getOr("key-" + Str(i), -1) != i) { bad = bad + 1; }
+    i = i + 1;
+  }
+  println("len=" + Str(sm.len()) + " bad=" + Str(bad) + " contains key-4999: " + Str(sm.contains("key-4999")) + " contains key-5000: " + Str(sm.contains("key-5000")));
+
+  section("sets of 5000");
+  s = collections::HashSet<int>();
+  i = 0;
+  while (i < 5000) {
+    s.add(i);
+    s.add(i);
+    i = i + 1;
+  }
+  t = collections::HashSet<int>();
+  i = 2500;
+  while (i < 7500) {
+    t.add(i);
+    i = i + 1;
+  }
+  println("len=" + Str(s.len()) + " union=" + Str(s.union(t).len()) + " intersection=" + Str(s.intersection(t).len()) + " difference=" + Str(s.difference(t).len()));
+  println("checksum=" + Str(checksum(s.values())));
+
+  section("array list of 20000 with front inserts and removes");
+  l = collections::ArrayList<int>();
+  i = 0;
+  while (i < 20000) {
+    l.push(i);
+    i = i + 1;
+  }
+  i = 0;
+  while (i < 100) {
+    l.insert(0, -i);
+    i = i + 1;
+  }
+  i = 0;
+  while (i < 100) {
+    l.removeAt(50);
+    i = i + 1;
+  }
+  println("len=" + Str(l.len()) + " first=" + Str(l.get(0)) + " get(50)=" + Str(l.get(50)) + " last=" + Str(l.get(l.len() - 1)) + " checksum=" + Str(checksum(l.toArray())));
+  return 0;
+}
