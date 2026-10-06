@@ -1,0 +1,18 @@
+# PaykanLang compilation cache (written next to the main file)
+.paykan_cache/
+
+# Build outputs of `paykan build`
+build/
+*.o
+*.out
+
+# Downloaded compiler (CI puts it here)
+.paykan/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+.claude/
