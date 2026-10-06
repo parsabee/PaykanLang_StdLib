@@ -23,6 +23,9 @@ fn main() -> int {
   counts.put("a", 1);
   counts.put("a", counts.getOr("a", 0) + 1);
   println(counts);                       // {"a": 2}
+  queue = collections::LinkedList<Str>();
+  queue.enqueue("job");
+  println(queue.dequeue());              // job
   return 0;
 }
 ```
@@ -43,7 +46,7 @@ fn main() -> int {
 
 | Module | Contents |
 |--------|----------|
-| [`::collections`](stdlib/collections.pkn) | `HashMap<K, V>`, `HashSet<V>`, `ArrayList<V>`; `join`, `listToString` |
+| [`::collections`](stdlib/collections.pkn) | `HashMap<K, V>`, `HashSet<V>`, `LinkedList<V>`; `join`, `listToString` over `V[]` |
 
 ### `::collections`
 
@@ -79,24 +82,40 @@ fn main() -> int {
 | `toString() -> Str` | `{1, 2, 3}` |
 | `equals(other: Obj) -> bool` | Same elements in any order; backs `==` |
 
-**`ArrayList<V>`** — a growable list backed by a builtin array. Elements are
-compared with `==`, so `V` can be any type, tuples and optionals included.
+**`LinkedList<V>`** — a doubly linked list with O(1) operations at both
+ends: a stack, a queue and a deque. Elements are compared with `==`, so `V`
+can be any type, tuples and optionals included.
 
 | Method | Description |
 |--------|-------------|
-| `ArrayList<V>()` | An empty list |
+| `LinkedList<V>()` | An empty list |
 | `len() -> int`, `isEmpty() -> bool` | Size |
-| `get(i: int) -> V`, `set(i: int, v: V)` | Bounds-checked element access |
-| `push(v: V)`, `pushAll(vs: V[])`, `pop() -> V` | At the end |
-| `insert(i: int, v: V)`, `removeAt(i: int) -> V` | Anywhere (`0 <= i <= len` for `insert`) |
-| `remove(v: V) -> bool` | Remove the first element `== v` |
-| `indexOf(v: V) -> int`, `lastIndexOf(v: V) -> int`, `contains(v: V) -> bool` | Search (`-1` when absent) |
-| `swap(i: int, j: int)`, `reverse()`, `clear()` | In place |
-| `slice(from: int, to: int) -> ArrayList<V>`, `copy() -> ArrayList<V>`, `toArray() -> V[]` | New containers |
+| `pushFront(v: V)`, `pushBack(v: V)`, `pushAll(vs: V[])` | Add |
+| `popFront() -> V`, `popBack() -> V` | Remove and return an end (panics when empty) |
+| `front() -> V`, `back() -> V` | Peek at an end (panics when empty; test `isEmpty()` first) |
+| `push(v: V)`, `pop() -> V` | Stack aliases of `pushBack` / `popBack` |
+| `enqueue(v: V)`, `dequeue() -> V` | Queue aliases of `pushBack` / `popFront` |
+| `contains(v: V) -> bool`, `remove(v: V) -> bool` | Search; `remove` drops the first element `== v` |
+| `reverse()`, `clear()` | In place |
+| `toArray() -> V[]`, `copy() -> LinkedList<V>` | Front-to-back copies |
 | `equals(other: Obj) -> bool` | Same elements in the same order; backs `==` |
 
-Free functions: `join<V>(xs: ArrayList<V>, sep: Str) -> Str` and
-`listToString<V>(xs: ArrayList<V>) -> Str` (`[1, 2, 3]`, Str elements quoted).
+`LinkedList` has no `toString`: print one with `join(list.toArray(), ", ")`
+or `listToString(list.toArray())`. (A `toString` or a `V?`-returning peek
+would need to box the elements, which would exclude tuple and optional
+element types from the whole class.) There is no `ArrayList`: the builtin
+`V[]` is the language's growable array.
+
+The nodes of a `LinkedList` link to each other by *index* into one dense
+node array rather than by reference, so there is no `prev`/`next` reference
+cycle: a list dropped while non-empty is freed completely. (With object
+back-pointers every list would leak, as PaykanLang has neither weak
+references, parsabee/PaykanLang#99, nor a cycle collector.)
+
+**Array helpers.** `join<V>(xs: V[], sep: Str) -> Str` renders each element
+with its `toString()` (Str elements unquoted); `listToString<V>(xs: V[]) ->
+Str` gives `[1, 2, 3]` with Str elements quoted, like the containers'
+`toString`. Both need a hashable `V` (below).
 
 **Keys and hashing.** A `HashMap` key or `HashSet` element must be a *hashable*
 type: `int`, `float`, `bool`, `char`, `Str`, an array or a class instance.
@@ -106,7 +125,7 @@ class chooses: override neither `toString` nor `equals` and it is keyed by
 identity; override both consistently (equal objects print alike) and it is
 keyed by value. Tuples and optionals cannot be keys (the boxing goes through
 `K?`, and the language has no `(A, B)?` or `T??`). A `HashMap` value type `V`
-must be hashable too (`get` returns a `V?`); `ArrayList` has no such limit.
+must be hashable too (`get` returns a `V?`); `LinkedList` has no such limit.
 `-0.0` and `0.0` are one key; a NaN key can never be found again.
 
 **Iteration order.** `keys`, `values`, `entries`, `toString` and a set's

@@ -1,5 +1,6 @@
-// Stress: thousands of insertions, rehash growth, removal patterns and the
-// determinism of the iteration order under churn.
+// Stress: thousands of insertions, rehash growth, removal patterns, the
+// determinism of the iteration order under churn, linked-list traffic at both
+// ends, and the array helpers.
 import ::collections;
 
 fn section(name: Str) { println("== " + name); }
@@ -116,23 +117,51 @@ fn main() -> int {
   println("len=" + Str(s.len()) + " union=" + Str(s.union(t).len()) + " intersection=" + Str(s.intersection(t).len()) + " difference=" + Str(s.difference(t).len()));
   println("checksum=" + Str(checksum(s.values())));
 
-  section("array list of 20000 with front inserts and removes");
-  l = collections::ArrayList<int>();
+  section("linked list: 50000 pushes and pops at both ends");
+  dq = collections::LinkedList<int>();
+  i = 0;
+  while (i < 50000) {
+    if (i % 2 == 0) { dq.pushBack(i); } else { dq.pushFront(i); }
+    i = i + 1;
+  }
+  println("len=" + Str(dq.len()) + " front=" + Str(dq.front()) + " back=" + Str(dq.back()));
+  sum: int = 0;
   i = 0;
   while (i < 20000) {
-    l.push(i);
+    sum = sum + dq.popFront() - dq.popBack();
     i = i + 1;
   }
+  println("len=" + Str(dq.len()) + " sum=" + Str(sum) + " front=" + Str(dq.front()) + " back=" + Str(dq.back()));
+  removed: int = 0;
   i = 0;
-  while (i < 100) {
-    l.insert(0, -i);
+  while (i < 10000) {
+    if (dq.remove(i * 4)) { removed = removed + 1; }
     i = i + 1;
   }
+  println("removed=" + Str(removed) + " len=" + Str(dq.len()) + " checksum=" + Str(checksum(dq.toArray())));
+  dq.reverse();
+  println("reversed checksum=" + Str(checksum(dq.toArray())) + " front=" + Str(dq.front()) + " back=" + Str(dq.back()));
+  // Queue churn: the dense node array must not grow with the traffic.
+  qq = collections::LinkedList<int>();
   i = 0;
-  while (i < 100) {
-    l.removeAt(50);
+  while (i < 100000) {
+    qq.enqueue(i);
+    if (i % 3 != 0) { qq.dequeue(); }
     i = i + 1;
   }
-  println("len=" + Str(l.len()) + " first=" + Str(l.get(0)) + " get(50)=" + Str(l.get(50)) + " last=" + Str(l.get(l.len() - 1)) + " checksum=" + Str(checksum(l.toArray())));
+  println("queue len=" + Str(qq.len()) + " front=" + Str(qq.front()) + " back=" + Str(qq.back()) + " checksum=" + Str(checksum(qq.toArray())));
+
+  section("join / listToString over arrays");
+  xs: int[] = [];
+  i = 0;
+  while (i < 5000) {
+    xs.push(i);
+    i = i + 1;
+  }
+  joined: Str = collections::join(xs, ",");
+  println("joined len=" + Str(joined.len()) + " listToString len=" + Str(collections::listToString(xs).len()));
+  empty: Str[] = [];
+  println("empty: [" + collections::join(empty, ", ") + "] " + collections::listToString(empty));
+  println(collections::join(["a", "b", "c"], "-") + " " + collections::listToString(["a", "b"]) + " " + collections::listToString([1.5, 2.0]) + " " + collections::listToString(['x']) + " " + collections::listToString([True, False]));
   return 0;
 }

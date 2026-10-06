@@ -7,8 +7,10 @@ version tracks the PaykanLang version the library targets (see README).
 
 ### Added
 
-- `::collections`: `HashMap<K, V>`, `HashSet<V>` and `ArrayList<V>`, with the
-  free functions `join` and `listToString`.
+- `::collections`: `HashMap<K, V>`, `HashSet<V>` and `LinkedList<V>` (a
+  cycle-free, index-linked deque usable as a stack and a queue), with the
+  free functions `join` and `listToString` over `V[]`. The builtin `V[]`
+  remains the one array type; there is no `ArrayList`.
 - `scripts/run_tests.py`: runs every test and example on every backend the
   compiler lists, with heap tracking; inlines the modules until PaykanLang
   exports generics across modules (parsabee/PaykanLang#160).

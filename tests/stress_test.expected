@@ -14,5 +14,13 @@ len=5000 bad=0 contains key-4999: True contains key-5000: False
 == sets of 5000
 len=5000 union=7500 intersection=2500 difference=2500
 checksum=-8191125577720164139
-== array list of 20000 with front inserts and removes
-len=20000 first=-99 get(50)=50 last=19999 checksum=-3006366881823713855
+== linked list: 50000 pushes and pops at both ends
+len=50000 front=49999 back=49998
+len=10000 sum=20000 front=9999 back=9998
+removed=2500 len=7500 checksum=-1551634983871851887
+reversed checksum=-8544711821049736559 front=9998 back=9999
+queue len=33334 front=66666 back=99999 checksum=-6840290222567285716
+== join / listToString over arrays
+joined len=23889 listToString len=28890
+empty: [] []
+a-b-c ["a", "b"] [1.5, 2] [x] [True, False]

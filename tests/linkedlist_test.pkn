@@ -1,0 +1,174 @@
+// LinkedList<V>: every method, as a stack, a queue and a deque, on int, Str,
+// class, tuple and optional elements, including non-empty lists dropped on
+// scope exit (the heap tracker must still report zero live blocks).
+import ::collections;
+
+class Point {
+  x: int;
+  fn __init__(x: int) { self.x = x; }
+  fn toString() -> Str { return "P" + Str(self.x); }
+  fn equals(o: Obj) -> bool {
+    match o {
+      p: Point { return p.x == self.x; }
+      _        { return False; }
+    }
+  }
+}
+
+fn section(name: Str) { println("== " + name); }
+
+fn show(l: collections::LinkedList<int>) -> Str {
+  return collections::listToString(l.toArray()) + " len=" + Str(l.len());
+}
+
+// A non-empty list that is simply dropped when the function returns.
+fn dropNonEmpty() -> int {
+  l = collections::LinkedList<Str>();
+  l.pushAll(["a", "b", "c"]);
+  l.pushFront("z");
+  inner = collections::LinkedList<Point>();
+  inner.push(Point(1));
+  inner.push(Point(2));
+  inner.popFront();
+  return l.len() + inner.len();
+}
+
+fn main() -> int {
+  section("pushBack / pushFront / front / back");
+  l = collections::LinkedList<int>();
+  println("empty: " + Str(l.isEmpty()) + " " + show(l));
+  l.pushBack(2);
+  l.pushBack(3);
+  l.pushFront(1);
+  l.pushFront(0);
+  println("empty: " + Str(l.isEmpty()) + " " + show(l));
+  println("front=" + Str(l.front()) + " back=" + Str(l.back()));
+
+  section("popFront / popBack");
+  println("popFront=" + Str(l.popFront()) + " popBack=" + Str(l.popBack()) + " -> " + show(l));
+  println("popFront=" + Str(l.popFront()) + " popFront=" + Str(l.popFront()) + " -> " + show(l) + " empty=" + Str(l.isEmpty()));
+  l.pushBack(7);
+  println("after refill: " + show(l) + " front=back: " + Str(l.front() == l.back()));
+  println("popBack=" + Str(l.popBack()) + " " + show(l));
+
+  section("stack: push / pop");
+  st = collections::LinkedList<int>();
+  st.push(1);
+  st.push(2);
+  st.push(3);
+  print("pops:");
+  while (!st.isEmpty()) { print(" " + Str(st.pop())); }
+  println("");
+
+  section("queue: enqueue / dequeue");
+  q = collections::LinkedList<Str>();
+  q.enqueue("first");
+  q.enqueue("second");
+  q.enqueue("third");
+  println("front=" + q.front() + " back=" + q.back());
+  print("dequeues:");
+  while (!q.isEmpty()) { print(" " + q.dequeue()); }
+  println("");
+
+  section("deque: both ends interleaved");
+  d = collections::LinkedList<int>();
+  i: int = 1;
+  while (i <= 6) {
+    if (i % 2 == 0) { d.pushBack(i); } else { d.pushFront(i); }
+    i = i + 1;
+  }
+  println(show(d));
+  println("popFront=" + Str(d.popFront()) + " popBack=" + Str(d.popBack()) + " popFront=" + Str(d.popFront()) + " -> " + show(d));
+
+  section("contains / remove");
+  r = collections::LinkedList<int>();
+  r.pushAll([1, 2, 3, 2, 4]);
+  println("contains 2: " + Str(r.contains(2)) + " contains 9: " + Str(r.contains(9)));
+  println("remove 2: " + Str(r.remove(2)) + " -> " + show(r));
+  println("remove 9: " + Str(r.remove(9)) + " -> " + show(r));
+  println("remove 1 (head): " + Str(r.remove(1)) + " -> " + show(r) + " front=" + Str(r.front()));
+  println("remove 4 (tail): " + Str(r.remove(4)) + " -> " + show(r) + " back=" + Str(r.back()));
+  println("remove 3: " + Str(r.remove(3)) + " remove 2: " + Str(r.remove(2)) + " -> " + show(r) + " empty=" + Str(r.isEmpty()));
+
+  section("reverse / copy / clear / equals");
+  v = collections::LinkedList<int>();
+  v.pushAll([1, 2, 3, 4]);
+  v.reverse();
+  println(show(v) + " front=" + Str(v.front()) + " back=" + Str(v.back()));
+  v.pushFront(5);
+  v.pushBack(0);
+  println(show(v));
+  c = v.copy();
+  println("copy equal: " + Str(c == v) + " " + Str(c.equals(v)));
+  c.popBack();
+  println("after pop: " + Str(c == v) + " " + Str(c != v));
+  w = collections::LinkedList<int>();
+  w.pushAll([0, 1, 2, 3, 4, 5]);
+  w.reverse();
+  println("reversed equal: " + Str(w == v));
+  o: Obj = [5, 4, 3, 2, 1, 0];
+  println("vs array: " + Str(v.equals(o)));
+  e = collections::LinkedList<int>();
+  e.reverse();
+  println("empty reversed: " + show(e) + " equal to new: " + Str(e == collections::LinkedList<int>()));
+  v.clear();
+  println("cleared: " + show(v) + " empty=" + Str(v.isEmpty()) + " contains 1: " + Str(v.contains(1)));
+  v.pushBack(9);
+  println("reusable: " + show(v) + " front=" + Str(v.front()));
+
+  section("Str / join");
+  s = collections::LinkedList<Str>();
+  s.pushAll(["b", "c"]);
+  s.pushFront("a");
+  println(collections::join(s.toArray(), ", ") + " | contains b: " + Str(s.contains("b")) + " remove b: " + Str(s.remove("b")) + " -> " + collections::join(s.toArray(), ""));
+
+  section("class elements");
+  ps = collections::LinkedList<Point>();
+  ps.push(Point(1));
+  ps.push(Point(2));
+  println(collections::join(ps.toArray(), " ") + " contains P2: " + Str(ps.contains(Point(2))) + " contains P3: " + Str(ps.contains(Point(3))) + " front.x=" + Str(ps.front().x));
+
+  section("tuple elements");
+  ts = collections::LinkedList<(int, Str)>();
+  ts.pushBack((1, "one"));
+  ts.pushBack((2, "two"));
+  ts.pushFront((0, "zero"));
+  n, name = ts.popFront();
+  println("popped " + Str(n) + " " + name + " contains (2,two): " + Str(ts.contains((2, "two"))) + " remove (1,one): " + Str(ts.remove((1, "one"))) + " back=" + ts.back().toString());
+
+  section("optional elements");
+  os = collections::LinkedList<int?>();
+  os.pushBack(None);
+  os.pushBack(5);
+  none: int? = None;
+  println("len=" + Str(os.len()) + " contains None: " + Str(os.contains(none)) + " contains 5: " + Str(os.contains(5)) + " contains 6: " + Str(os.contains(6)));
+  match os.popBack() {
+    x: int { println("popBack=" + Str(x)); }
+    None   { println("popBack=None"); }
+  }
+
+  section("nested lists");
+  ll = collections::LinkedList<collections::LinkedList<int>>();
+  ll.push(collections::LinkedList<int>());
+  ll.back().pushAll([1, 2]);
+  ll.push(collections::LinkedList<int>());
+  ll.back().push(3);
+  println("outer len=" + Str(ll.len()) + " front=" + show(ll.front()) + " back=" + show(ll.back()));
+
+  section("dropped while non-empty");
+  println("kept " + Str(dropNonEmpty()) + " elements, then dropped");
+  {
+    scoped = collections::LinkedList<int>();
+    scoped.pushAll([1, 2, 3]);
+    scoped.remove(2);
+  }
+  println("scope left");
+
+  section("array values are shared");
+  al = collections::LinkedList<int[]>();
+  arr: int[] = [1];
+  al.push(arr);
+  al.front().push(2);
+  println("arr.len=" + Str(arr.len()));
+  return 0;
+}

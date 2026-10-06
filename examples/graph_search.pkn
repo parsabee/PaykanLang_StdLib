@@ -1,13 +1,14 @@
-// Breadth-first search over a small graph: a HashMap<Str, ArrayList<Str>> of
-// adjacency lists, a HashSet<Str> of visited nodes and an ArrayList<Str> as
-// the queue. Works once PaykanLang exports generics across modules (#160);
-// until then scripts/run_tests.py inlines the module for you.
+// Breadth-first search over a small graph: a HashMap<Str, Str[]> of
+// adjacency lists, a HashSet<Str> of visited nodes and a LinkedList<Str> as
+// the queue.
+// Works once PaykanLang exports generics across modules (#160); until then
+// scripts/run_tests.py inlines the module for you.
 import ::collections;
 
 class Graph {
-  edges: collections::HashMap<Str, collections::ArrayList<Str>>;
+  edges: collections::HashMap<Str, Str[]>;
 
-  fn __init__() { self.edges = collections::HashMap<Str, collections::ArrayList<Str>>(); }
+  fn __init__() { self.edges = collections::HashMap<Str, Str[]>(); }
 
   // Add an undirected edge between `a` and `b`.
   fn connect(a: Str, b: Str) {
@@ -15,12 +16,13 @@ class Graph {
     self.neighbours(b).push(a);
   }
 
-  // The adjacency list of `n`, created on first use.
-  fn neighbours(n: Str) -> collections::ArrayList<Str> {
+  // The adjacency list of `n`, created on first use (arrays are shared, so
+  // pushing onto the returned array updates the map's entry).
+  fn neighbours(n: Str) -> Str[] {
     match self.edges.get(n) {
-      l: collections::ArrayList<Str> { return l; }
+      l: Str[] { return l; }
       None {
-        l: collections::ArrayList<Str> = collections::ArrayList<Str>();
+        l: Str[] = [];
         self.edges.put(n, l);
         return l;
       }
@@ -28,19 +30,19 @@ class Graph {
   }
 
   // The nodes reachable from `start`, in breadth-first order.
-  fn bfs(start: Str) -> collections::ArrayList<Str> {
+  fn bfs(start: Str) -> Str[] {
     seen = collections::HashSet<Str>();
-    queue = collections::ArrayList<Str>();
-    order = collections::ArrayList<Str>();
+    queue = collections::LinkedList<Str>();
+    order: Str[] = [];
     seen.add(start);
-    queue.push(start);
+    queue.enqueue(start);
     while (!queue.isEmpty()) {
-      n: Str = queue.removeAt(0);
+      n: Str = queue.dequeue();
       order.push(n);
-      next: collections::ArrayList<Str> = self.neighbours(n);
+      next: Str[] = self.neighbours(n);
       i: int = 0;
       while (i < next.len()) {
-        if (seen.add(next.get(i))) { queue.push(next.get(i)); }
+        if (seen.add(next[i])) { queue.enqueue(next[i]); }
         i = i + 1;
       }
     }
@@ -64,7 +66,7 @@ fn main() -> int {
   all = collections::HashSet<Str>();
   all.addAll(g.edges.keys());
   reachable = collections::HashSet<Str>();
-  reachable.addAll(g.bfs("a").toArray());
+  reachable.addAll(g.bfs("a"));
   println("unreachable from a: " + all.difference(reachable).toString());
   return 0;
 }

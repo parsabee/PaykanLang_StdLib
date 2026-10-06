@@ -1,5 +1,7 @@
 // ::collections — the generic containers of the PaykanLang standard library:
-// HashMap<K, V>, HashSet<V> and ArrayList<V>.
+// HashMap<K, V>, HashSet<V> and LinkedList<V>, plus join() and
+// listToString() for the builtin arrays (`V[]` is the language's one
+// array type).
 //
 // Keys and set elements ("hashable" types). A HashMap key or HashSet element
 // is hashed over the text of its toString() and compared with equals(), both
@@ -13,10 +15,11 @@
 // other language; -0.0 and 0.0 are the same key.
 //
 // Values. A HashMap value type V is any type that can be boxed the same way,
-// because get() returns a `V?` and toString() prints the values. ArrayList<V>
-// never boxes its elements (it compares them with `==`), so it holds any
-// type, tuples and optionals included; listToString() and join() are free
-// functions so that only a call to them demands a printable V.
+// because get() returns a `V?` and toString() prints the values. join() and
+// listToString() box the array elements they print, so they take arrays of
+// the same types. LinkedList<V> never boxes: it compares elements with `==`
+// and returns them as plain V, so it holds any type, tuples and optionals
+// included; print one with join(list.toArray(), sep).
 //
 // Iteration order. keys(), values(), entries() and toString() list a map's
 // entries (and a set's elements) in insertion order; removing a key keeps the
@@ -444,168 +447,205 @@ class HashSet<V> {
 }
 
 // ---------------------------------------------------------------------------
-// ArrayList<V>
+// LinkedList<V>
 
-// A growable list of V, in the spirit of the builtin arrays: a contiguous
-// backing array that grows at the end, with insert/remove anywhere by
-// shifting. Elements are compared with `==` (value for primitives, content
-// for Str, `equals` for classes, element-wise for tuples), so V can be any
-// type. Indices are bounds-checked: an index outside the list aborts the
-// program with the array's own `index out of bounds` panic.
-class ArrayList<V> {
-  __items: V[];
+// One node of a LinkedList: its neighbours are *indices* into the list's
+// node array, -1 for none.
+class __Node<V> {
+  value: V;
+  prev: int;
+  next: int;
+  fn __init__(value: V, prev: int, next: int) {
+    self.value = value;
+    self.prev = prev;
+    self.next = next;
+  }
+}
+
+// A doubly linked list with O(1) push/pop at both ends: a stack
+// (push/pop), a queue (enqueue/dequeue) and a deque (pushFront/pushBack/
+// popFront/popBack) at once. Elements are compared with `==`, so V can be
+// any type. front()/back()/popFront()/popBack() on an empty list abort the
+// program with an `index out of bounds` panic; test isEmpty() first.
+//
+// Memory. The nodes live in one dense array and link to each other by
+// index, not by reference: a node holding `prev` and `next` object
+// references would form a reference cycle with its neighbours, and with
+// neither weak references (#99) nor a cycle collector, every such list would
+// leak when dropped while non-empty. With indices there is no cycle: the
+// list owns the array, the array owns the nodes, and dropping the list frees
+// everything. Removing a node moves the array's last node into its slot (and
+// re-points that node's neighbours), so the array stays dense and no removed
+// value lingers.
+class LinkedList<V> {
+  __nodes: __Node<V>[];
+  __head: int;
+  __tail: int;
 
   // An empty list.
-  fn __init__() { self.__items = []; }
+  fn __init__() {
+    self.__nodes = [];
+    self.__head = -1;
+    self.__tail = -1;
+  }
 
   // The number of elements.
-  fn len() -> int { return self.__items.len(); }
+  fn len() -> int { return self.__nodes.len(); }
 
   // True when the list is empty.
-  fn isEmpty() -> bool { return self.__items.len() == 0; }
+  fn isEmpty() -> bool { return self.__nodes.len() == 0; }
 
-  // The element at `i`.
-  fn get(i: int) -> V { return self.__items[i]; }
-
-  // Replace the element at `i`.
-  fn set(i: int, v: V) { self.__items[i] = v; }
+  // Prepend `v`.
+  fn pushFront(v: V) {
+    idx: int = self.__nodes.len();
+    self.__nodes.push(__Node<V>(v, -1, self.__head));
+    if (self.__head >= 0) { self.__nodes[self.__head].prev = idx; }
+    else { self.__tail = idx; }
+    self.__head = idx;
+  }
 
   // Append `v`.
-  fn push(v: V) { self.__items.push(v); }
+  fn pushBack(v: V) {
+    idx: int = self.__nodes.len();
+    self.__nodes.push(__Node<V>(v, self.__tail, -1));
+    if (self.__tail >= 0) { self.__nodes[self.__tail].next = idx; }
+    else { self.__head = idx; }
+    self.__tail = idx;
+  }
 
-  // Append every element of `vs`.
+  // Append every element of `vs`, in order.
   fn pushAll(vs: V[]) {
     i: int = 0;
     while (i < vs.len()) {
-      self.__items.push(vs[i]);
+      self.pushBack(vs[i]);
       i = i + 1;
     }
   }
 
-  // Remove and return the last element (panics on an empty list).
-  fn pop() -> V { return self.__items.pop(); }
-
-  // Insert `v` at `i` (0 <= i <= len), shifting what follows to the right.
-  fn insert(i: int, v: V) {
-    n: int = self.__items.len();
-    if (i == n) {
-      self.__items.push(v);
-      return;
-    }
-    // Reading `[i]` first makes an index past the end panic like any other
-    // out-of-bounds access, instead of silently appending.
-    last: V = self.__items[i];
-    last = self.__items[n - 1];
-    self.__items.push(last);
-    j: int = n - 1;
-    while (j > i) {
-      self.__items[j] = self.__items[j - 1];
-      j = j - 1;
-    }
-    self.__items[i] = v;
-  }
-
-  // Remove and return the element at `i`, shifting what follows to the left.
-  fn removeAt(i: int) -> V {
-    v: V = self.__items[i];
-    j: int = i;
-    while (j < self.__items.len() - 1) {
-      self.__items[j] = self.__items[j + 1];
-      j = j + 1;
-    }
-    self.__items.pop();
+  // Remove and return the first element (panics on an empty list).
+  fn popFront() -> V {
+    v: V = self.__nodes[self.__head].value;
+    self.__unlink(self.__head);
     return v;
   }
 
-  // Remove the first element equal to `v`; True if one was found.
+  // Remove and return the last element (panics on an empty list).
+  fn popBack() -> V {
+    v: V = self.__nodes[self.__tail].value;
+    self.__unlink(self.__tail);
+    return v;
+  }
+
+  // The first element (panics on an empty list).
+  fn front() -> V { return self.__nodes[self.__head].value; }
+
+  // The last element (panics on an empty list).
+  fn back() -> V { return self.__nodes[self.__tail].value; }
+
+  // Stack use: push on the back ...
+  fn push(v: V) { self.pushBack(v); }
+
+  // ... and pop from the back.
+  fn pop() -> V { return self.popBack(); }
+
+  // Queue use: enqueue at the back ...
+  fn enqueue(v: V) { self.pushBack(v); }
+
+  // ... and dequeue from the front.
+  fn dequeue() -> V { return self.popFront(); }
+
+  // The index of the first node whose value == v, or -1.
+  fn __find(v: V) -> int {
+    i: int = self.__head;
+    while (i >= 0) {
+      if (self.__nodes[i].value == v) { return i; }
+      i = self.__nodes[i].next;
+    }
+    return -1;
+  }
+
+  // True when some element == v.
+  fn contains(v: V) -> bool { return self.__find(v) >= 0; }
+
+  // Remove the first element == v; True if one was found.
   fn remove(v: V) -> bool {
-    i: int = self.indexOf(v);
-    if (i < 0) { return False; }
-    self.removeAt(i);
+    idx: int = self.__find(v);
+    if (idx < 0) { return False; }
+    self.__unlink(idx);
     return True;
   }
 
-  // The index of the first element equal to `v`, or -1.
-  fn indexOf(v: V) -> int {
-    i: int = 0;
-    while (i < self.__items.len()) {
-      if (self.__items[i] == v) { return i; }
-      i = i + 1;
+  // Take node `idx` out of the chain, then out of the array.
+  fn __unlink(idx: int) {
+    n: __Node<V> = self.__nodes[idx];
+    if (n.prev >= 0) { self.__nodes[n.prev].next = n.next; }
+    else { self.__head = n.next; }
+    if (n.next >= 0) { self.__nodes[n.next].prev = n.prev; }
+    else { self.__tail = n.prev; }
+    // Keep the array dense: move the last node into the freed slot and
+    // re-point whatever referred to it by its old index.
+    last: int = self.__nodes.len() - 1;
+    if (idx != last) {
+      m: __Node<V> = self.__nodes[last];
+      self.__nodes[idx] = m;
+      if (m.prev >= 0) { self.__nodes[m.prev].next = idx; }
+      else { self.__head = idx; }
+      if (m.next >= 0) { self.__nodes[m.next].prev = idx; }
+      else { self.__tail = idx; }
     }
-    return -1;
+    self.__nodes.pop();
   }
-
-  // The index of the last element equal to `v`, or -1.
-  fn lastIndexOf(v: V) -> int {
-    i: int = self.__items.len() - 1;
-    while (i >= 0) {
-      if (self.__items[i] == v) { return i; }
-      i = i - 1;
-    }
-    return -1;
-  }
-
-  // True when some element equals `v`.
-  fn contains(v: V) -> bool { return self.indexOf(v) >= 0; }
 
   // Remove every element.
-  fn clear() { self.__items = []; }
-
-  // Swap the elements at `i` and `j`.
-  fn swap(i: int, j: int) {
-    t: V = self.__items[i];
-    self.__items[i] = self.__items[j];
-    self.__items[j] = t;
+  fn clear() {
+    self.__nodes = [];
+    self.__head = -1;
+    self.__tail = -1;
   }
 
   // Reverse the list in place.
   fn reverse() {
-    lo: int = 0;
-    hi: int = self.__items.len() - 1;
-    while (lo < hi) {
-      self.swap(lo, hi);
-      lo = lo + 1;
-      hi = hi - 1;
+    i: int = 0;
+    while (i < self.__nodes.len()) {
+      n: __Node<V> = self.__nodes[i];
+      t: int = n.prev;
+      n.prev = n.next;
+      n.next = t;
+      i = i + 1;
     }
+    h: int = self.__head;
+    self.__head = self.__tail;
+    self.__tail = h;
   }
 
-  // A new list holding the elements from `from` (inclusive) to `to` (exclusive).
-  fn slice(from: int, to: int) -> ArrayList<V> {
-    out: ArrayList<V> = ArrayList<V>();
-    i: int = from;
-    while (i < to) {
-      out.push(self.__items[i]);
-      i = i + 1;
+  // The elements, front to back, as a fresh array.
+  fn toArray() -> V[] {
+    out: V[] = [];
+    i: int = self.__head;
+    while (i >= 0) {
+      out.push(self.__nodes[i].value);
+      i = self.__nodes[i].next;
     }
     return out;
   }
 
   // A new list with the same elements.
-  fn copy() -> ArrayList<V> { return self.slice(0, self.__items.len()); }
-
-  // The elements as a fresh builtin array.
-  fn toArray() -> V[] {
-    out: V[] = [];
-    self.__copyInto(out);
+  fn copy() -> LinkedList<V> {
+    out: LinkedList<V> = LinkedList<V>();
+    out.pushAll(self.toArray());
     return out;
   }
 
-  fn __copyInto(out: V[]) {
-    i: int = 0;
-    while (i < self.__items.len()) {
-      out.push(self.__items[i]);
-      i = i + 1;
-    }
-  }
-
-  // True when `other` is an ArrayList<V> of equal elements in the same order.
+  // True when `other` is a LinkedList<V> of == elements in the same order.
   fn equals(other: Obj) -> bool {
     match other {
-      o: ArrayList<V> {
-        if (o.len() != self.__items.len()) { return False; }
+      o: LinkedList<V> {
+        if (o.len() != self.len()) { return False; }
+        a: V[] = self.toArray();
+        b: V[] = o.toArray();
         i: int = 0;
-        while (i < self.__items.len()) {
-          if (o.get(i) != self.__items[i]) { return False; }
+        while (i < a.len()) {
+          if (a[i] != b[i]) { return False; }
           i = i + 1;
         }
         return True;
@@ -615,27 +655,30 @@ class ArrayList<V> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Array helpers
+
 // The elements of `xs` joined by `sep`, each rendered with its toString()
-// (Str elements unquoted). V must be a boxable type (see the module comment).
-fn join<V>(xs: ArrayList<V>, sep: Str) -> Str {
+// (Str elements unquoted). V must be a hashable type (see the module comment).
+fn join<V>(xs: V[], sep: Str) -> Str {
   s: Str = "";
   i: int = 0;
   while (i < xs.len()) {
     if (i > 0) { s = s + sep; }
-    s = s + __box<V>(xs.get(i)).toString();
+    s = s + __box<V>(xs[i]).toString();
     i = i + 1;
   }
   return s;
 }
 
 // `[a, b, ...]` with Str elements quoted, like HashMap's and HashSet's
-// toString(). V must be a boxable type (see the module comment).
-fn listToString<V>(xs: ArrayList<V>) -> Str {
+// toString(). V must be a hashable type (see the module comment).
+fn listToString<V>(xs: V[]) -> Str {
   s: Str = "[";
   i: int = 0;
   while (i < xs.len()) {
     if (i > 0) { s = s + ", "; }
-    s = s + __show<V>(xs.get(i));
+    s = s + __show<V>(xs[i]);
     i = i + 1;
   }
   return s + "]";
