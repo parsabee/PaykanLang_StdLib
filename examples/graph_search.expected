@@ -1,0 +1,4 @@
+from a: a b c d e
+from e: e d b c a
+from x: x y
+unreachable from a: {"x", "y"}

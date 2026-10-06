@@ -1,0 +1,70 @@
+// Breadth-first search over a small graph: a HashMap<Str, ArrayList<Str>> of
+// adjacency lists, a HashSet<Str> of visited nodes and an ArrayList<Str> as
+// the queue. Works once PaykanLang exports generics across modules (#160);
+// until then scripts/run_tests.py inlines the module for you.
+import ::collections;
+
+class Graph {
+  edges: collections::HashMap<Str, collections::ArrayList<Str>>;
+
+  fn __init__() { self.edges = collections::HashMap<Str, collections::ArrayList<Str>>(); }
+
+  // Add an undirected edge between `a` and `b`.
+  fn connect(a: Str, b: Str) {
+    self.neighbours(a).push(b);
+    self.neighbours(b).push(a);
+  }
+
+  // The adjacency list of `n`, created on first use.
+  fn neighbours(n: Str) -> collections::ArrayList<Str> {
+    match self.edges.get(n) {
+      l: collections::ArrayList<Str> { return l; }
+      None {
+        l: collections::ArrayList<Str> = collections::ArrayList<Str>();
+        self.edges.put(n, l);
+        return l;
+      }
+    }
+  }
+
+  // The nodes reachable from `start`, in breadth-first order.
+  fn bfs(start: Str) -> collections::ArrayList<Str> {
+    seen = collections::HashSet<Str>();
+    queue = collections::ArrayList<Str>();
+    order = collections::ArrayList<Str>();
+    seen.add(start);
+    queue.push(start);
+    while (!queue.isEmpty()) {
+      n: Str = queue.removeAt(0);
+      order.push(n);
+      next: collections::ArrayList<Str> = self.neighbours(n);
+      i: int = 0;
+      while (i < next.len()) {
+        if (seen.add(next.get(i))) { queue.push(next.get(i)); }
+        i = i + 1;
+      }
+    }
+    return order;
+  }
+}
+
+fn main() -> int {
+  g = Graph();
+  g.connect("a", "b");
+  g.connect("a", "c");
+  g.connect("b", "d");
+  g.connect("c", "d");
+  g.connect("d", "e");
+  g.connect("x", "y");
+
+  println("from a: " + collections::join(g.bfs("a"), " "));
+  println("from e: " + collections::join(g.bfs("e"), " "));
+  println("from x: " + collections::join(g.bfs("x"), " "));
+
+  all = collections::HashSet<Str>();
+  all.addAll(g.edges.keys());
+  reachable = collections::HashSet<Str>();
+  reachable.addAll(g.bfs("a").toArray());
+  println("unreachable from a: " + all.difference(reachable).toString());
+  return 0;
+}
